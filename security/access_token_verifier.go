@@ -53,7 +53,7 @@ func NewAccessTokenVerifier(opts AccessTokenVerifierOptions) (*AccessTokenVerifi
 }
 
 func NewAccessTokenVerifierFromPEM(publicKeyPEM string, opts AccessTokenVerifierOptions) (*AccessTokenVerifier, error) {
-	publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(strings.TrimSpace(publicKeyPEM)))
+	publicKey, err := ParseRSAPublicKeyFromPEM(publicKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("parse JWT public key: %w", err)
 	}

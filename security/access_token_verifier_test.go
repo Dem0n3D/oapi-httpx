@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,6 +135,46 @@ func TestAccessTokenVerifierVerify(t *testing.T) {
 			t.Fatalf("Verify() error = %v, want ErrTokenRevoked", err)
 		}
 	})
+}
+
+func TestNewAccessTokenVerifierFromPEMNormalizesEscapedNewlines(t *testing.T) {
+	t.Parallel()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey() error = %v", err)
+	}
+
+	publicKeyDER, err := x509.MarshalPKIXPublicKey(privateKey.Public())
+	if err != nil {
+		t.Fatalf("x509.MarshalPKIXPublicKey() error = %v", err)
+	}
+
+	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyDER,
+	})
+
+	verifier, err := NewAccessTokenVerifierFromPEM(strings.ReplaceAll(string(publicKeyPEM), "\n", `\n`), AccessTokenVerifierOptions{
+		KeyID:           "test-key",
+		ValidateSubject: ValidateUUIDSubject,
+	})
+	if err != nil {
+		t.Fatalf("NewAccessTokenVerifierFromPEM() error = %v", err)
+	}
+
+	tokenString := signTokenClaims(t, privateKey, "test-key", TokenClaims{
+		TokenType: TokenTypeAccess,
+		Scopes:    []string{"admin"},
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "4d0bba09-cf39-40d5-9e1f-3f5a4e159b4b",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	if _, err := verifier.Verify(context.Background(), tokenString); err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
 }
 
 func signTokenClaims(t *testing.T, privateKey *rsa.PrivateKey, kid string, claims TokenClaims) string {
