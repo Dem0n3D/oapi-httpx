@@ -10,10 +10,10 @@ func TestExtractAccessToken(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		setup  func(*http.Request)
-		token  string
-		ok     bool
+		name  string
+		setup func(*http.Request)
+		token string
+		ok    bool
 	}{
 		{
 			name: "authorization header takes precedence",
