@@ -26,3 +26,10 @@ replace github.com/Dem0n3D/oapi-httpx => ../oapi-httpx
 ```
 
 After publishing a tag, the `replace` directive can be removed.
+
+## Releases
+
+Releases are published by GitHub Actions with `go-semantic-release`.
+
+- push commits to `main` using Conventional Commits (`feat:`, `fix:`, `perf:`, `BREAKING CHANGE:`)
+- the workflow runs tests, calculates the next version and creates a GitHub Release with generated notes
