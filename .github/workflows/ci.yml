@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test And Coverage
+    runs-on: ubuntu-latest
+    env:
+      MIN_COVERAGE: "70.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests with coverage
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Enforce minimum coverage
+        run: |
+          total_coverage="$(go tool cover -func=coverage.out | awk '/^total:/ {print substr($3, 1, length($3)-1)}')"
+          echo "Total coverage: ${total_coverage}%"
+          {
+            echo "## Test Coverage"
+            echo
+            echo "- Total: ${total_coverage}%"
+            echo "- Minimum required: ${MIN_COVERAGE}%"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          awk -v actual="${total_coverage}" -v minimum="${MIN_COVERAGE}" 'BEGIN { exit (actual + 0 >= minimum + 0 ? 0 : 1) }'
