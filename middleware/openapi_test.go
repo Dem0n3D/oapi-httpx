@@ -225,8 +225,8 @@ func TestNormalizeBasePath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := normalizeBasePath(tc.input); got != tc.want {
-				t.Fatalf("normalizeBasePath(%q) = %q, want %q", tc.input, got, tc.want)
+			if got := NormalizeBasePath(tc.input); got != tc.want {
+				t.Fatalf("NormalizeBasePath(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}

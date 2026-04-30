@@ -37,7 +37,7 @@ func OpenAPIValidationWithOptions(loadSwagger LoadSwaggerFunc, opts OpenAPIValid
 		return nil, fmt.Errorf("failed to create openapi router: %w", err)
 	}
 
-	basePath := normalizeBasePath(opts.BasePath)
+	basePath := NormalizeBasePath(opts.BasePath)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +53,7 @@ func OpenAPIValidationWithOptions(loadSwagger LoadSwaggerFunc, opts OpenAPIValid
 	}, nil
 }
 
-func normalizeBasePath(raw string) string {
+func NormalizeBasePath(raw string) string {
 	basePath := strings.TrimSpace(raw)
 	if basePath == "" || basePath == "/" {
 		return ""
