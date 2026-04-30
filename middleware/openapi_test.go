@@ -122,6 +122,54 @@ func TestOpenAPIValidation(t *testing.T) {
 	})
 }
 
+func TestOpenAPIValidationWithBasePath(t *testing.T) {
+	t.Parallel()
+
+	spec := &openapi3.T{
+		OpenAPI: "3.0.3",
+		Info: &openapi3.Info{
+			Title:   "test",
+			Version: "1.0.0",
+		},
+		Paths: openapi3.NewPaths(
+			openapi3.WithPath("/orders", &openapi3.PathItem{
+				Get: &openapi3.Operation{
+					Responses: openapi3.NewResponses(
+						openapi3.WithStatus(http.StatusOK, &openapi3.ResponseRef{
+							Value: &openapi3.Response{Description: stringPtr("ok")},
+						}),
+					),
+				},
+			}),
+		),
+	}
+
+	mw, err := OpenAPIValidationWithOptions(func() (*openapi3.T, error) {
+		return spec, nil
+	}, OpenAPIValidationOptions{BasePath: "/auth"})
+	if err != nil {
+		t.Fatalf("OpenAPIValidationWithOptions() error = %v", err)
+	}
+
+	nextCalled := false
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/orders", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+	if !nextCalled {
+		t.Fatal("next handler should be called")
+	}
+}
+
 func TestOpenAPIValidationReturnsLoadError(t *testing.T) {
 	t.Parallel()
 
@@ -156,6 +204,31 @@ func TestWriteValidationError(t *testing.T) {
 	}
 	if body.ErrorDescription != "token is invalid" {
 		t.Fatalf("error description = %q, want token is invalid", body.ErrorDescription)
+	}
+}
+
+func TestNormalizeBasePath(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: ""},
+		{name: "root", input: "/", want: ""},
+		{name: "plain", input: "auth", want: "/auth"},
+		{name: "normalized", input: "/auth/", want: "/auth"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := normalizeBasePath(tc.input); got != tc.want {
+				t.Fatalf("normalizeBasePath(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
 	}
 }
 

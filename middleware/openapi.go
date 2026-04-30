@@ -16,7 +16,15 @@ import (
 
 type LoadSwaggerFunc func() (*openapi3.T, error)
 
+type OpenAPIValidationOptions struct {
+	BasePath string
+}
+
 func OpenAPIValidation(loadSwagger LoadSwaggerFunc) (func(http.Handler) http.Handler, error) {
+	return OpenAPIValidationWithOptions(loadSwagger, OpenAPIValidationOptions{})
+}
+
+func OpenAPIValidationWithOptions(loadSwagger LoadSwaggerFunc, opts OpenAPIValidationOptions) (func(http.Handler) http.Handler, error) {
 	swagger, err := loadSwagger()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load embedded openapi spec: %w", err)
@@ -29,9 +37,13 @@ func OpenAPIValidation(loadSwagger LoadSwaggerFunc) (func(http.Handler) http.Han
 		return nil, fmt.Errorf("failed to create openapi router: %w", err)
 	}
 
+	basePath := normalizeBasePath(opts.BasePath)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if statusCode, err := validateRequest(r, router); err != nil {
+			request := requestForValidation(r, basePath)
+
+			if statusCode, err := validateRequest(request, router); err != nil {
 				writeValidationError(w, statusCode, err)
 				return
 			}
@@ -39,6 +51,45 @@ func OpenAPIValidation(loadSwagger LoadSwaggerFunc) (func(http.Handler) http.Han
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+func normalizeBasePath(raw string) string {
+	basePath := strings.TrimSpace(raw)
+	if basePath == "" || basePath == "/" {
+		return ""
+	}
+
+	return "/" + strings.Trim(basePath, "/")
+}
+
+func requestForValidation(r *http.Request, basePath string) *http.Request {
+	if basePath == "" {
+		return r
+	}
+
+	clonedRequest := r.Clone(r.Context())
+	clonedURL := *r.URL
+	clonedRequest.URL = &clonedURL
+	clonedRequest.RequestURI = stripBasePath(basePath, r.RequestURI)
+	clonedRequest.URL.Path = stripBasePath(basePath, r.URL.Path)
+
+	return clonedRequest
+}
+
+func stripBasePath(basePath, value string) string {
+	if value == "" || basePath == "" {
+		return value
+	}
+
+	if value == basePath {
+		return "/"
+	}
+
+	if strings.HasPrefix(value, basePath+"/") {
+		return strings.TrimPrefix(value, basePath)
+	}
+
+	return value
 }
 
 func validateRequest(r *http.Request, router routers.Router) (int, error) {
