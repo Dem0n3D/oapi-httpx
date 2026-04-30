@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -41,7 +43,11 @@ func OpenAPIValidationWithOptions(loadSwagger LoadSwaggerFunc, opts OpenAPIValid
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			request := requestForValidation(r, basePath)
+			request, err := requestForValidation(r, basePath)
+			if err != nil {
+				writeValidationError(w, http.StatusInternalServerError, fmt.Errorf("failed to prepare request for validation: %w", err))
+				return
+			}
 
 			if statusCode, err := validateRequest(request, router); err != nil {
 				writeValidationError(w, statusCode, err)
@@ -62,18 +68,55 @@ func NormalizeBasePath(raw string) string {
 	return "/" + strings.Trim(basePath, "/")
 }
 
-func requestForValidation(r *http.Request, basePath string) *http.Request {
-	if basePath == "" {
-		return r
-	}
-
+func requestForValidation(r *http.Request, basePath string) (*http.Request, error) {
 	clonedRequest := r.Clone(r.Context())
 	clonedURL := *r.URL
 	clonedRequest.URL = &clonedURL
-	clonedRequest.RequestURI = stripBasePath(basePath, r.RequestURI)
-	clonedRequest.URL.Path = stripBasePath(basePath, r.URL.Path)
+	if err := cloneRequestBody(r, clonedRequest); err != nil {
+		return nil, err
+	}
 
-	return clonedRequest
+	if basePath != "" {
+		clonedRequest.RequestURI = stripBasePath(basePath, r.RequestURI)
+		clonedRequest.URL.Path = stripBasePath(basePath, r.URL.Path)
+	}
+
+	return clonedRequest, nil
+}
+
+func cloneRequestBody(original *http.Request, cloned *http.Request) error {
+	if original.Body == nil || original.Body == http.NoBody {
+		cloned.Body = original.Body
+		return nil
+	}
+
+	body, err := io.ReadAll(original.Body)
+	if err != nil {
+		return err
+	}
+
+	if err := original.Body.Close(); err != nil {
+		return err
+	}
+
+	original.Body = io.NopCloser(bytes.NewReader(body))
+	original.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+
+	cloned.Body = io.NopCloser(bytes.NewReader(body))
+	cloned.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+	original.ContentLength = int64(len(body))
+	cloned.ContentLength = int64(len(body))
+
+	if len(body) == 0 {
+		original.Body = http.NoBody
+		cloned.Body = http.NoBody
+	}
+
+	return nil
 }
 
 func stripBasePath(basePath, value string) string {
