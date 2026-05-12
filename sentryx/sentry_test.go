@@ -1,6 +1,14 @@
 package sentryx
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/getsentry/sentry-go"
+)
 
 func TestConfigEnabled(t *testing.T) {
 	testCases := []struct {
@@ -42,4 +50,59 @@ func TestConfigValidateTracesSampleRate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCaptureExceptionUsesHubFromContext(t *testing.T) {
+	transport := &recordingTransport{}
+	client, err := sentry.NewClient(sentry.ClientOptions{
+		Dsn:       "https://public@example.invalid/1",
+		Transport: transport,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	hub := sentry.NewHub(client, sentry.NewScope())
+	ctx := sentry.SetHubOnContext(context.Background(), hub)
+
+	CaptureException(ctx, errors.New("boom"))
+
+	if got := transport.Len(); got != 1 {
+		t.Fatalf("captured events = %d, want 1", got)
+	}
+}
+
+func TestCaptureExceptionIgnoresNilError(t *testing.T) {
+	CaptureException(context.Background(), nil)
+}
+
+type recordingTransport struct {
+	mu     sync.Mutex
+	events []*sentry.Event
+}
+
+func (t *recordingTransport) Flush(time.Duration) bool {
+	return true
+}
+
+func (t *recordingTransport) FlushWithContext(context.Context) bool {
+	return true
+}
+
+func (t *recordingTransport) Configure(sentry.ClientOptions) {}
+
+func (t *recordingTransport) SendEvent(event *sentry.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.events = append(t.events, event)
+}
+
+func (t *recordingTransport) Close() {}
+
+func (t *recordingTransport) Len() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return len(t.events)
 }

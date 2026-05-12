@@ -1,6 +1,7 @@
 package sentryx
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -62,6 +63,19 @@ func (c *Client) Enabled() bool {
 
 func (c *Client) CaptureException(err error) {
 	if !c.Enabled() || err == nil {
+		return
+	}
+
+	CaptureException(context.Background(), err)
+}
+
+func CaptureException(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+
+	if hub := sentry.GetHubFromContext(ctx); hub != nil {
+		hub.CaptureException(err)
 		return
 	}
 
