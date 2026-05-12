@@ -76,6 +76,37 @@ func TestCaptureExceptionIgnoresNilError(t *testing.T) {
 	CaptureException(context.Background(), nil)
 }
 
+func TestInternalErrorResponse(t *testing.T) {
+	transport := &recordingTransport{}
+	client, err := sentry.NewClient(sentry.ClientOptions{
+		Dsn:       "https://public@example.invalid/1",
+		Transport: transport,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	type apiErrorResponse struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+
+	hub := sentry.NewHub(client, sentry.NewScope())
+	ctx := sentry.SetHubOnContext(context.Background(), hub)
+
+	response := InternalErrorResponse[apiErrorResponse](ctx, errors.New("boom"))
+
+	if response.Error != "internal_error" {
+		t.Fatalf("Error = %q, want %q", response.Error, "internal_error")
+	}
+	if response.ErrorDescription != "internal server error" {
+		t.Fatalf("ErrorDescription = %q, want %q", response.ErrorDescription, "internal server error")
+	}
+	if got := transport.Len(); got != 1 {
+		t.Fatalf("captured events = %d, want 1", got)
+	}
+}
+
 type recordingTransport struct {
 	mu     sync.Mutex
 	events []*sentry.Event

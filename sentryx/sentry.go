@@ -35,6 +35,13 @@ type Client struct {
 	enabled bool
 }
 
+type ErrorResponse interface {
+	~struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+}
+
 func Init(cfg Config) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -80,6 +87,15 @@ func CaptureException(ctx context.Context, err error) {
 	}
 
 	sentry.CaptureException(err)
+}
+
+func InternalErrorResponse[T ErrorResponse](ctx context.Context, err error) T {
+	CaptureException(ctx, err)
+
+	return T{
+		Error:            "internal_error",
+		ErrorDescription: "internal server error",
+	}
 }
 
 func (c *Client) RecoverAndFlush(timeout time.Duration) {
