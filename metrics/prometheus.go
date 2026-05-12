@@ -10,17 +10,30 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// PrometheusOptions configures a Prometheus exporter with an isolated registry.
 type PrometheusOptions struct {
-	CommonLabels    map[string]string
-	RegisterGo      bool
+	// CommonLabels are attached to every metric registered through the exporter.
+	CommonLabels map[string]string
+
+	// RegisterGo adds the standard Go runtime collector.
+	RegisterGo bool
+
+	// RegisterProcess adds the standard process collector.
 	RegisterProcess bool
 }
 
+// PrometheusExporter owns a Prometheus registry and creates counters backed by
+// prometheus/client_golang.
+//
+// The exporter intentionally uses a private registry so applications can expose
+// only metrics they explicitly register.
 type PrometheusExporter struct {
 	registry     *prometheus.Registry
 	commonLabels prometheus.Labels
 }
 
+// NewPrometheusExporter creates a Prometheus exporter and optionally registers
+// standard Go/process collectors.
 func NewPrometheusExporter(options PrometheusOptions) (*PrometheusExporter, error) {
 	registry := prometheus.NewRegistry()
 	exporter := &PrometheusExporter{
@@ -43,14 +56,24 @@ func NewPrometheusExporter(options PrometheusOptions) (*PrometheusExporter, erro
 	return exporter, nil
 }
 
+// Handler returns an HTTP handler that exposes the exporter's registry in
+// Prometheus text format.
 func (e *PrometheusExporter) Handler() http.Handler {
 	return promhttp.HandlerFor(e.registry, promhttp.HandlerOpts{})
 }
 
+// Registerer returns the exporter's registry as a prometheus.Registerer.
+//
+// Use this when wiring middleware that should publish into the same registry
+// as business metrics.
 func (e *PrometheusExporter) Registerer() prometheus.Registerer {
 	return e.registry
 }
 
+// NewCounter registers a Prometheus counter vector.
+//
+// labelNames defines the dynamic labels expected at Add/Inc time. Missing label
+// values are treated as empty strings by the returned Counter implementation.
 func (e *PrometheusExporter) NewCounter(name string, help string, labelNames []string) (Counter, error) {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name:        name,

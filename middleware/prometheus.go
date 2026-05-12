@@ -10,12 +10,28 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// PrometheusHTTPOptions configures HTTP request instrumentation.
 type PrometheusHTTPOptions struct {
-	Registerer   prometheus.Registerer
+	// Registerer receives the HTTP request collectors. If nil, the default
+	// Prometheus registerer is used.
+	Registerer prometheus.Registerer
+
+	// CommonLabels are attached to every HTTP request metric.
 	CommonLabels prometheus.Labels
-	Buckets      []float64
+
+	// Buckets configures http_request_duration_seconds. If empty,
+	// prometheus.DefBuckets is used.
+	Buckets []float64
 }
 
+// PrometheusHTTP returns middleware that records request count and duration.
+//
+// The middleware registers:
+//   - http_requests_total{method,route,status}
+//   - http_request_duration_seconds{method,route,status}
+//
+// For chi routers, route is the matched route pattern. If no route pattern is
+// available, route is "unknown".
 func PrometheusHTTP(options PrometheusHTTPOptions) func(http.Handler) http.Handler {
 	registerer := options.Registerer
 	if registerer == nil {

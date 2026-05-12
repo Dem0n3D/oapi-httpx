@@ -18,15 +18,36 @@ const (
 	defaultYandexMetadataEndpoint   = "http://169.254.169.254"
 )
 
+// YandexOptions configures the Yandex Monitoring push exporter.
 type YandexOptions struct {
-	FolderID         string
-	Endpoint         string
-	IAMToken         string
+	// FolderID is the Yandex Cloud folder that owns the custom metrics.
+	FolderID string
+
+	// Endpoint is the Yandex Monitoring API endpoint. If empty, the public
+	// Yandex Cloud Monitoring endpoint is used.
+	Endpoint string
+
+	// IAMToken is an optional pre-issued IAM token. If empty, the exporter gets
+	// and caches a token from the metadata service.
+	IAMToken string
+
+	// MetadataEndpoint is the metadata service base URL used when IAMToken is
+	// empty. If empty, the Yandex metadata endpoint is used.
 	MetadataEndpoint string
-	RequestTimeout   time.Duration
-	CommonLabels     map[string]string
+
+	// RequestTimeout is used for both metadata token requests and metric writes.
+	// If non-positive, a small default timeout is used.
+	RequestTimeout time.Duration
+
+	// CommonLabels are sent as request-level labels for every metric write.
+	CommonLabels map[string]string
 }
 
+// YandexExporter writes custom metrics to Yandex Monitoring.
+//
+// It implements a push-style exporter: every Counter update performs a write
+// request to the Monitoring API. The exporter is therefore best suited for
+// low-volume business events rather than very hot request-path metrics.
 type YandexExporter struct {
 	folderID      string
 	endpoint      string
@@ -39,6 +60,9 @@ type tokenProvider interface {
 	Token(ctx context.Context) (string, error)
 }
 
+// NewYandexExporter creates a Yandex Monitoring exporter.
+//
+// The exporter writes to /monitoring/v2/data/write with service=custom.
 func NewYandexExporter(options YandexOptions) (*YandexExporter, error) {
 	folderID := strings.TrimSpace(options.FolderID)
 	if folderID == "" {
@@ -75,6 +99,7 @@ func NewYandexExporter(options YandexOptions) (*YandexExporter, error) {
 	}, nil
 }
 
+// NewCounter returns a Yandex-backed counter with the given metric name.
 func (e *YandexExporter) NewCounter(name string) Counter {
 	return yandexCounter{
 		exporter: e,
