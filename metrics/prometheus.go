@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -91,6 +92,28 @@ func (e *PrometheusExporter) NewCounter(name string, help string, labelNames []s
 	}, nil
 }
 
+// NewDurationObserver registers a Prometheus histogram vector.
+func (e *PrometheusExporter) NewDurationObserver(name string, help string, labelNames []string, buckets []float64) (DurationObserver, error) {
+	if len(buckets) == 0 {
+		buckets = prometheus.DefBuckets
+	}
+	histogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:        name,
+		Help:        help,
+		ConstLabels: e.commonLabels,
+		Buckets:     buckets,
+	}, labelNames)
+
+	if err := e.registry.Register(histogram); err != nil {
+		return nil, fmt.Errorf("register prometheus histogram %q: %w", name, err)
+	}
+
+	return prometheusDurationObserver{
+		histogram:  histogram,
+		labelNames: append([]string(nil), labelNames...),
+	}, nil
+}
+
 type prometheusCounter struct {
 	counter    *prometheus.CounterVec
 	labelNames []string
@@ -111,6 +134,20 @@ func (c prometheusCounter) Add(_ context.Context, labels map[string]string, valu
 
 func (c prometheusCounter) Inc(ctx context.Context, labels map[string]string) error {
 	return c.Add(ctx, labels, 1)
+}
+
+type prometheusDurationObserver struct {
+	histogram  *prometheus.HistogramVec
+	labelNames []string
+}
+
+func (o prometheusDurationObserver) Observe(_ context.Context, labels map[string]string, duration time.Duration) error {
+	values := make([]string, 0, len(o.labelNames))
+	for _, name := range o.labelNames {
+		values = append(values, labels[name])
+	}
+	o.histogram.WithLabelValues(values...).Observe(duration.Seconds())
+	return nil
 }
 
 func copyLabels(labels map[string]string) map[string]string {
